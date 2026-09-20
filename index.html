@@ -681,16 +681,8 @@
   .scenario-builder-count-row span { flex: 1; }
   .scenario-builder-count-row input { width: 60px; text-align: right; }
 
-  /* ---- Day view: dark timeline theme ---- */
+  /* ---- Day view: matches the app's light theme (no color overrides) ---- */
   #day-view, #planner-day-nav {
-    --bg: #15130F;
-    --surface: #211D18;
-    --ink: #F3EEE3;
-    --ink-soft: #A99F8E;
-    --line: #332D26;
-    --line-soft: #2A241E;
-    --miso: #FF8A66;
-    --miso-deep: #F16A45;
     color: var(--ink);
   }
 
@@ -1437,13 +1429,11 @@
 
   function pad(n) { return n < 10 ? '0' + n : '' + n; }
   function dateKey(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
-  function getMonday(d) {
-    var day = d.getDay();
-    var diff = (day === 0 ? -6 : 1 - day);
-    var monday = new Date(d);
-    monday.setDate(d.getDate() + diff);
-    monday.setHours(0, 0, 0, 0);
-    return monday;
+  function getWeekStart(d) {
+    var start = new Date(d);
+    start.setDate(d.getDate() - d.getDay()); // getDay(): 0=Sun...6=Sat, so this lands on Sunday
+    start.setHours(0, 0, 0, 0);
+    return start;
   }
   function addDays(d, n) { var r = new Date(d); r.setDate(r.getDate() + n); return r; }
   function isSameDate(a, b) { return dateKey(a) === dateKey(b); }
@@ -1977,7 +1967,7 @@
     });
     if (changedTasks) saveTasks();
 
-    var monday = getMonday(new Date());
+    var monday = getWeekStart(new Date());
     recurringTasks.push(
       { id: 'recurring-hairwash', text: 'Hair wash + scalp treatment', daysOfWeek: [0, 2, 4, 6], startDate: dateKey(monday) },
       { id: 'recurring-rfspa', text: 'RF facial spa session', daysOfWeek: [0], startDate: dateKey(monday) }
@@ -2494,7 +2484,7 @@
       placeTemplateOnDay(kind, itemId, selectedMonthDay);
       return;
     }
-    var monday = getMonday(addDays(new Date(), weekOffset * 7));
+    var monday = getWeekStart(addDays(new Date(), weekOffset * 7));
     var popover = document.createElement('div'); popover.className = 'day-picker-popover';
     for (var i = 0; i < 7; i++) {
       var day = addDays(monday, i); var key = dateKey(day);
@@ -3109,8 +3099,17 @@
         i += span.hours.length;
         continue;
       }
-      if (h === sleepHour || h === addTaskHour) {
-        // never merge the sleep hour or the add-task marker into a multi-hour gap run
+      if (h === sleepHour) {
+        // When empty, the sleep hour itself isn't shown as its own block, so the
+        // timeline reads Sleep -> next full hour -- mirroring how the half-hour
+        // before Wake isn't shown as its own block either.
+        if (isCollapsible(h)) { i++; continue; }
+        container.appendChild(buildHourRow(dateStr, h, {}));
+        i++;
+        continue;
+      }
+      if (h === addTaskHour) {
+        // never merge the add-task marker into a multi-hour gap run
         container.appendChild(isCollapsible(h) ? buildGapBand(dateStr, [h]) : buildHourRow(dateStr, h, {}));
         i++;
         continue;
@@ -3825,7 +3824,7 @@
   }
 
   function renderWeekDays() {
-    var monday = getMonday(addDays(new Date(), weekOffset * 7));
+    var monday = getWeekStart(addDays(new Date(), weekOffset * 7));
     document.getElementById('week-label').textContent = formatRangeLabel(monday);
     var container = document.getElementById('week-days');
     container.innerHTML = '';
@@ -3838,14 +3837,14 @@
     var base = addMonths(new Date(), monthOffset);
     document.getElementById('month-label').textContent = base.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
 
-    var gridStart = getMonday(base);
+    var gridStart = getWeekStart(base);
     var lastOfMonth = new Date(base.getFullYear(), base.getMonth() + 1, 0);
-    var gridEndExclusive = getMonday(addDays(lastOfMonth, 7));
+    var gridEndExclusive = getWeekStart(addDays(lastOfMonth, 7));
     var numCells = Math.round((gridEndExclusive - gridStart) / 86400000);
 
     var headers = document.getElementById('month-grid-headers');
     if (!headers.childNodes.length) {
-      ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].forEach(function (d) {
+      ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].forEach(function (d) {
         var span = document.createElement('span'); span.textContent = d; headers.appendChild(span);
       });
     }
@@ -4025,7 +4024,7 @@
   document.getElementById('view-day-btn').addEventListener('click', function () { setPlannerViewMode('day'); });
 
   document.getElementById('build-grocery-btn').addEventListener('click', function () {
-    var monday = getMonday(addDays(new Date(), weekOffset * 7));
+    var monday = getWeekStart(addDays(new Date(), weekOffset * 7));
     var seen = {};
     for (var i = 0; i < 7; i++) {
       var key = dateKey(addDays(monday, i));
@@ -4042,7 +4041,7 @@
 
   document.getElementById('clear-week').addEventListener('click', function () {
     if (!confirm('Clear all meals, tasks, and events planned for this week?')) return;
-    var monday = getMonday(addDays(new Date(), weekOffset * 7));
+    var monday = getWeekStart(addDays(new Date(), weekOffset * 7));
     for (var i = 0; i < 7; i++) {
       var key = dateKey(addDays(monday, i));
       delete weekPlan[key]; delete weekTasks[key]; delete weekEvents[key];
@@ -4054,7 +4053,7 @@
   // ---------- habits tab ----------
 
   function renderHabits() {
-    var monday = getMonday(addDays(new Date(), habitsWeekOffset * 7));
+    var monday = getWeekStart(addDays(new Date(), habitsWeekOffset * 7));
     document.getElementById('habits-week-label').textContent = formatRangeLabel(monday);
     var container = document.getElementById('habits-grid');
     container.innerHTML = '';
